@@ -35,7 +35,7 @@ class ESP32Monitor extends StatefulWidget {
 
 class _ESP32MonitorState extends State<ESP32Monitor> {
   // IP do ESP32
-  String esp32Ip = "192.168.100.20";
+  String esp32Ip = "192.168.4.1";
 
   // Mapa que armazena o estado dos contatos
   Map<String, int> estados = {
