@@ -1,10 +1,11 @@
-// Versão 0.3.0
-// Nesta versão foi implementado um menu inicial, um tempo para o exercício terminar e botões para reiniciar ou voltar ao menu
+// Versão 0.5.0
+// Nesta versão é calculada a média de tempos de reação durante os exercícios, que é salva na memória local e pode ser acessada pelo menu principal
 import 'package:flutter/material.dart'; // Importa a biblioteca principal do Flutter para interface gráfica
 import 'package:http/http.dart' as http; // Importa a biblioteca para realizar requisições HTTP
 import 'dart:convert'; // Importa a biblioteca para converter dados JSON
 import 'dart:math'; // Importa a biblioteca para gerar números aleatórios
 import 'dart:async'; // Importa a biblioteca para manipular temporizadores
+import 'package:shared_preferences/shared_preferences.dart'; // Importa a biblioteca para salvar dados localmente
 
 void main() {
   runApp(const MyApp()); // Inicia o aplicativo
@@ -23,22 +24,69 @@ class MyApp extends StatelessWidget { // Classe principal do aplicativo
 }
 
 // Tela Inicial (Menu)
-class MenuScreen extends StatelessWidget {
-  const MenuScreen({super.key}); // Construtor da tela
+class MenuScreen extends StatefulWidget {
+  const MenuScreen({super.key});
+
+  @override
+  // ignore: library_private_types_in_public_api
+  _MenuScreenState createState() => _MenuScreenState();
+}
+
+class _MenuScreenState extends State<MenuScreen> {
+  List<double> reactionAverages = []; // Lista para armazenar os tempos de reação
+
+  @override
+  void initState() {
+    super.initState();
+    loadReactionAverages(); // Carrega os tempos salvos ao iniciar
+  }
+
+  Future<void> loadReactionAverages() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      reactionAverages = prefs.getStringList('reactionAverages')?.map((e) => double.parse(e)).toList() ?? [];
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Exercícios de Dedos"), backgroundColor: Colors.blue), // Barra superior da tela
+      appBar: AppBar(title: const Text("Exercícios de Dedos"), backgroundColor: Colors.blue),
       body: Center(
-        child: ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const FingerGameScreen()), // Navega para a tela do exercício
-            );
-          },
-          child: const Text("Iniciar", style: TextStyle(fontSize: 24)), // Botão de iniciar o exercício
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const FingerGameScreen()), // Navega para a tela do exercício
+                ).then((_) => loadReactionAverages()); // Atualiza os tempos ao voltar
+              },
+              child: const Text("Iniciar", style: TextStyle(fontSize: 24)),
+            ),
+            const SizedBox(height: 20),
+                        ElevatedButton(
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text("Médias de Tempo"),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: reactionAverages.isNotEmpty
+                          ? reactionAverages.map((avg) => Text("${avg.toStringAsFixed(2)} ms", style: const TextStyle(fontSize: 18))).toList()
+                          : [const Text("Nenhuma média salva ainda.")],
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(context), child: const Text("Fechar")),
+                    ],
+                  ),
+                );
+              },
+              child: const Text("Ver Médias", style: TextStyle(fontSize: 24)),
+            ),
+          ],
         ),
       ),
     );
@@ -54,7 +102,6 @@ class FingerGameScreen extends StatefulWidget {
   _FingerGameScreenState createState() => _FingerGameScreenState(); // Cria o estado da tela
 }
 
-// Classe responsável por se comunicar com o ESP32
 class _FingerGameScreenState extends State<FingerGameScreen> {
   final String esp32Url = "http://192.168.4.1/status"; // Define a URL do ESP32
   final List<String> fingers = ["Polegar", "Indicador", "Médio", "Anelar", "Mindinho"]; // Lista com os dedos disponíveis
@@ -63,6 +110,8 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
   int timeLeft = 60; // Tempo restante do exercício
   bool success = false, gameOver = false; // Indica se o usuário pressionou o dedo correto e se o exercício acabou
   Timer? gameTimer, checkTimer; // Timers para verificar o tempo de exercício e o estado dos botões
+  DateTime? startTime; // Armazena o momento em que um novo dedo é mostrado
+  List<int> reactionTimes = []; // Lista para armazenar os tempos de reação
 
   @override
   void initState() {
@@ -81,6 +130,7 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
   void startGame() {
     gameOver = false; // Reinicia o estado do exercício
     timeLeft = 60; // Reinicia o tempo restante
+    reactionTimes.clear(); // Limpa os tempos de reação
     pickRandomFinger(); // Escolhe um dedo aleatório para começar
     startTimers(); // Inicia os timers
   }
@@ -90,6 +140,7 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
     setState(() {
       success = false; // Reinicia o estado de sucesso
       targetFinger = fingers[Random().nextInt(fingers.length)]; // Seleciona um dedo aleatoriamente
+      startTime = DateTime.now(); // Armazena o momento que o dedo foi mostrado
     });
   }
 
@@ -106,7 +157,7 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
       }
     });
 
-    checkTimer = Timer.periodic(const Duration(milliseconds: 100), (_) => checkFingerPress()); // Verifica o estado dos dedos a cada 100ms
+    checkTimer = Timer.periodic(const Duration(milliseconds: 10), (_) => checkFingerPress()); // Verifica o estado dos dedos a cada 100ms
   }
 
   // Verifica o estado dos dedos no ESP32
@@ -119,6 +170,8 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
         final Map<String, dynamic> fingerStates = json.decode(utf8.decode(response.bodyBytes)); // Decodifica a resposta JSON
 
         if (fingerStates[targetFinger] == 1 && !success) { // Verifica se o dedo correto foi pressionado
+          int reactionTime = DateTime.now().difference(startTime!).inMilliseconds; // Calcula o tempo de reação
+          reactionTimes.add(reactionTime); // Adiciona à lista de tempos de reação
           setState(() => success = true); // Define que o usuário acertou
           Future.delayed(const Duration(milliseconds: 500), pickRandomFinger); // Aguarda 0,5 segundo antes de escolher outro dedo
         }
@@ -128,42 +181,57 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
     }
   }
 
+  // Salva os tempos de reação
+  Future<void> saveReactionAverage() async {
+     if (reactionTimes.isEmpty) return;
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    double average = reactionTimes.reduce((a, b) => a + b) / reactionTimes.length;
+    List<String> savedAverages = prefs.getStringList('reactionAverages') ?? [];
+    savedAverages.add(average.toString());
+    await prefs.setStringList('reactionAverages', savedAverages);
+  }
+
   // Encerra o exercício
   void endGame() {
     gameTimer?.cancel(); // Cancela o temporizador do exercício
     checkTimer?.cancel(); // Cancela o temporizador de verificação
     setState(() => gameOver = true); // Define o estado do exercício como encerrado
+    saveReactionAverage();
   }
+
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Pressione o dedo certo"), backgroundColor: Colors.blue), // Barra superior da tela
       body: Center(
-        child: gameOver // Verifica se o exercício terminou
+        child: gameOver
             ? Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text("⏳ Tempo Esgotado!", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.red)), // Mensagem de tempo esgotado
+                  const Text("⏳ Tempo Esgotado!", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.red)),
                   const SizedBox(height: 20),
-                  ElevatedButton(onPressed: startGame, child: const Text("🔄 Reiniciar exercício", style: TextStyle(fontSize: 20))), // Botão de reiniciar
+                  Text("Média: ${(reactionTimes.reduce((a, b) => a + b) / reactionTimes.length).toStringAsFixed(2)} ms", style: const TextStyle(fontSize: 20)),
+                  const SizedBox(height: 20),
+                  ElevatedButton(onPressed: startGame, child: const Text("🔄 Reiniciar exercício", style: TextStyle(fontSize: 20))),
                   const SizedBox(height: 10),
-                  ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("Voltar ao Menu", style: TextStyle(fontSize: 20))), // Botão de voltar ao menu
+                  ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("Voltar ao Menu", style: TextStyle(fontSize: 20))),
                 ],
               )
             : Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text("Tempo Restante: $timeLeft s", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)), // Escreve o tempo restante de exercício
+                  Text("Tempo Restante: $timeLeft s", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 20),
                   Text("Pressione: $targetFinger", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                  if (success) const Text("✅ Acertou!", style: TextStyle(fontSize: 30, color: Colors.green, fontWeight: FontWeight.bold)), // Escreve a mensagem de acerto
+                  if (success) const Text("✅ Acertou!", style: TextStyle(fontSize: 30, color: Colors.green, fontWeight: FontWeight.bold)),
                 ],
               ),
       ),
     );
   }
 }
+
 
 
 
