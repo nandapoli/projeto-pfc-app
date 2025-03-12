@@ -1,5 +1,5 @@
-// Versão 0.5.0
-// Nesta versão é calculada a média de tempos de reação durante os exercícios, que é salva na memória local e pode ser acessada pelo menu principal
+// Versão 0.7.0
+// Nesta versão é possível apagar as médias de tempo de resposta salvas, e o aplicativo agora identifica se o tempo acabar sem nenhum dedo ser pressionado.
 import 'package:flutter/material.dart'; // Importa a biblioteca principal do Flutter para interface gráfica
 import 'package:http/http.dart' as http; // Importa a biblioteca para realizar requisições HTTP
 import 'dart:convert'; // Importa a biblioteca para converter dados JSON
@@ -48,6 +48,14 @@ class _MenuScreenState extends State<MenuScreen> {
     });
   }
 
+  Future<void> clearReactionTimes() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.remove('reactionAverages'); // Apaga os tempos salvos
+    setState(() {
+      reactionAverages.clear(); // Atualiza a interface
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -80,6 +88,7 @@ class _MenuScreenState extends State<MenuScreen> {
                     ),
                     actions: [
                       TextButton(onPressed: () => Navigator.pop(context), child: const Text("Fechar")),
+                      TextButton(onPressed: clearReactionTimes, child: const Text("Apagar Tudo"))
                     ],
                   ),
                 );
@@ -196,7 +205,9 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
     gameTimer?.cancel(); // Cancela o temporizador do exercício
     checkTimer?.cancel(); // Cancela o temporizador de verificação
     setState(() => gameOver = true); // Define o estado do exercício como encerrado
-    saveReactionAverage();
+    if (reactionTimes.isNotEmpty){
+      saveReactionAverage();
+    }
   }
 
 
@@ -211,7 +222,9 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
                 children: [
                   const Text("⏳ Tempo Esgotado!", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.red)),
                   const SizedBox(height: 20),
-                  Text("Média: ${(reactionTimes.reduce((a, b) => a + b) / reactionTimes.length).toStringAsFixed(2)} ms", style: const TextStyle(fontSize: 20)),
+                  reactionTimes.isEmpty
+                      ?Text("Nenhum dedo foi pressionado.", style: const TextStyle(fontSize: 20))
+                      :Text("Média: ${(reactionTimes.reduce((a, b) => a + b) / reactionTimes.length).toStringAsFixed(2)} ms", style: const TextStyle(fontSize: 20)),
                   const SizedBox(height: 20),
                   ElevatedButton(onPressed: startGame, child: const Text("🔄 Reiniciar exercício", style: TextStyle(fontSize: 20))),
                   const SizedBox(height: 10),
