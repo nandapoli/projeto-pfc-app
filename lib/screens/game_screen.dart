@@ -21,7 +21,7 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
 
   late String targetFinger; // Dedo que deve ser pressionado
   late int timeLeft; // Tempo restante do exercício
-  bool success = false, gameOver = false; // Variáveis de controle
+  bool success = false, wrong = false, gameOver = false; // Variáveis de controle
   Timer? gameTimer, checkTimer; // Timers do jogo
   DateTime? startTime; // Momento em que o dedo foi mostrado
   List<int> reactionTimes = []; // Lista de tempos de reação em milissegundos
@@ -72,22 +72,39 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
   }
 
   Future<void> checkFingerPress() async {
-    if (gameOver) return;
+    if (gameOver) return; // Se o jogo acabou, não verifica nada
 
     try {
-      final response = await http.get(Uri.parse(esp32Url));
+      final response = await http.get(Uri.parse(esp32Url)); // Faz requisição HTTP para o ESP32
       if (response.statusCode == 200) {
-        final Map<String, dynamic> fingerStates = json.decode(utf8.decode(response.bodyBytes));
-
-        if (fingerStates[targetFinger] == 1 && !success) {
-          int reactionTime = DateTime.now().difference(startTime!).inMilliseconds;
-          reactionTimes.add(reactionTime);
-          setState(() => success = true);
-
-          // Gera um delay aleatório entre 100 ms e 5000 ms (5 s)
-          int randomDelay = 100 + _random.nextInt(4900);
-
+        final Map<String, dynamic> fingerStates = json.decode(utf8.decode(response.bodyBytes)); // Decodifica a resposta JSON
+        if (!success) {
+          // Verifica se o dedo correto foi pressionado
+          if (fingerStates[targetFinger] == 1) {
+            int reactionTime = DateTime.now().difference(startTime!).inMilliseconds; // Calcula o tempo de reação em milissegundos
+            reactionTimes.add(reactionTime); // Adiciona à lista de tempos
+            setState(() { 
+              success = true;
+          });
+          // Gera um delay aleatório entre 100 ms e 3000 ms (3s)
+          int randomDelay = 100 + _random.nextInt(2900);
           Future.delayed(Duration(milliseconds: randomDelay), pickRandomFinger);
+        } else{
+          // Verifica se algum dedo errado foi pressionado
+          for (String finger in fingers) {
+            if (finger != targetFinger && fingerStates[finger] == 1) {
+              setState(() {
+                wrong = true; // Marca como erro
+                success = false;
+              });
+              // Apaga a mensagem de erro depois de 1 segundo
+              Future.delayed(const Duration(seconds: 1), () {
+                if (mounted) setState(() => wrong = false);
+              });
+              break;
+            } 
+          }  
+        }
         }
       }
     } catch (_) {
@@ -132,7 +149,8 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
                   Text("Tempo Restante: $timeLeft s", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 20),
                   Text("Pressione: $targetFinger", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                  if (success) const Text("✅ Acertou!", style: TextStyle(fontSize: 30, color: Colors.green, fontWeight: FontWeight.bold)),
+                  if (wrong) const Text("❌ Errou!", style: TextStyle(fontSize: 28, color: Colors.red, fontWeight: FontWeight.bold))
+                  else if (success && !wrong) const Text("✅ Acertou!", style: TextStyle(fontSize: 30, color: Colors.green, fontWeight: FontWeight.bold)),
                 ],
               ),
       ),

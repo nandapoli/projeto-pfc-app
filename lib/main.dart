@@ -1,4 +1,4 @@
-// Versão 0.8: Nesta versão o código foi dividido em arquivos e agora é possível escolher o tempo de exercício.
+// Versão 0.8.5.1: Nesta versão o aplicativo identifica dedos pressionados errados e sinaliza na tela.
 import 'package:flutter/material.dart'; // Importa a biblioteca principal do Flutter para interface gráfica
 import 'screens/menu_screen.dart'; // Importa a tela do menu principal
 
