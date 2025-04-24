@@ -21,6 +21,7 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
 
   late String targetFinger; // Dedo que deve ser pressionado
   late int timeLeft; // Tempo restante do exercício
+  int correctCount = 0, totaltries = 0; // Contador de erros cometidos
   bool success = false, wrong = false, gameOver = false; // Variáveis de controle
   Timer? gameTimer, checkTimer; // Timers do jogo
   DateTime? startTime; // Momento em que o dedo foi mostrado
@@ -43,6 +44,8 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
 
   void startGame() {
     gameOver = false;
+    correctCount = 0; // Reinicia o contador de erros
+    totaltries = 0;
     timeLeft = widget.gameTimer; // Reinicia o tempo restante
     reactionTimes.clear();
     pickRandomFinger();
@@ -83,23 +86,26 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
           if (fingerStates[targetFinger] == 1) {
             int reactionTime = DateTime.now().difference(startTime!).inMilliseconds; // Calcula o tempo de reação em milissegundos
             reactionTimes.add(reactionTime); // Adiciona à lista de tempos
-            setState(() { 
-              success = true;
-          });
-          // Gera um delay aleatório entre 100 ms e 3000 ms (3s)
-          int randomDelay = 100 + _random.nextInt(2900);
-          Future.delayed(Duration(milliseconds: randomDelay), pickRandomFinger);
+            setState(() => success = true);
+            totaltries++;
+            correctCount++;
+            // Gera um delay aleatório entre 100 ms e 3000 ms (3s)
+            int randomDelay = 100 + _random.nextInt(2900);
+            Future.delayed(Duration(milliseconds: randomDelay), pickRandomFinger);
         } else{
           // Verifica se algum dedo errado foi pressionado
           for (String finger in fingers) {
             if (finger != targetFinger && fingerStates[finger] == 1) {
               setState(() {
-                wrong = true; // Marca como erro
                 success = false;
+                wrong = true;
               });
-              // Apaga a mensagem de erro depois de 1 segundo
-              Future.delayed(const Duration(seconds: 1), () {
-                if (mounted) setState(() => wrong = false);
+              // Apaga a mensagem de erro depois de 0,8 segundo
+              Future.delayed(const Duration(milliseconds: 800), () {
+                if (mounted){
+                  setState(() => wrong = false);
+                  totaltries++;
+                }
               });
               break;
             } 
@@ -112,15 +118,19 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
     }
   }
 
-  void endGame() {
-    gameTimer?.cancel();
+  Future<void> endGame() async {
+    gameTimer?.cancel(); // Para os timers
     checkTimer?.cancel();
-    setState(() => gameOver = true);
 
-    if (reactionTimes.isNotEmpty) {
-      double avgTime = (reactionTimes.reduce((a, b) => a + b) / reactionTimes.length);
-      StorageService.saveReactionTime(avgTime);
-    }
+    double avgReaction = reactionTimes.isNotEmpty
+        ? reactionTimes.reduce((a, b) => a + b) / reactionTimes.length
+        : 0.0; // Calcula média
+
+    double accuracy = totaltries > 0 ? (correctCount / totaltries) * 100 : 0; // Calcula taxa de acerto
+
+    await StorageService.saveMatch(avgReaction, accuracy); // Salva os dados da partida
+
+    setState(() => gameOver = true); // Atualiza UI para mostrar o fim do jogo
   }
   
 @override
@@ -134,9 +144,11 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
                 children: [
                   const Text("⏳ Tempo Esgotado!", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.red)),
                   const SizedBox(height: 20),
-                  reactionTimes.isEmpty
-                      ?Text("Nenhum dedo foi pressionado.", style: const TextStyle(fontSize: 20))
+                  totaltries == 0
+                      ?Text("Nenhum dedo foi pressionado corretamente.", style: const TextStyle(fontSize: 20), textAlign: TextAlign.center)
                       :Text("Média: ${(reactionTimes.reduce((a, b) => a + b) / reactionTimes.length).toStringAsFixed(2)} ms", style: const TextStyle(fontSize: 20)),
+                      const SizedBox(height: 10),
+                      Text("Taxa de Acertos: $correctCount / $totaltries = ${totaltries == 0 ? 0 : ((correctCount / totaltries) * 100).toStringAsFixed(1)}%"),
                   const SizedBox(height: 20),
                   ElevatedButton(onPressed: startGame, child: const Text("🔄 Reiniciar exercício", style: TextStyle(fontSize: 20))),
                   const SizedBox(height: 10),
@@ -151,6 +163,9 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
                   Text("Pressione: $targetFinger", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                   if (wrong) const Text("❌ Errou!", style: TextStyle(fontSize: 28, color: Colors.red, fontWeight: FontWeight.bold))
                   else if (success && !wrong) const Text("✅ Acertou!", style: TextStyle(fontSize: 30, color: Colors.green, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 40),
+                  ElevatedButton(onPressed: endGame, style: ElevatedButton.styleFrom(backgroundColor: Colors.red), 
+                    child: const Text("Encerrar exercício", style: TextStyle(fontSize: 20, color: Colors.white))),
                 ],
               ),
       ),
