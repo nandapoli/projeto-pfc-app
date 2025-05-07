@@ -1,4 +1,4 @@
-// Versão 0.8.8: Nesta versão o aplicativo salva o histórico de resultados em um novo menu, e foi adicionado um botão para encerrar o exercício
+// Versão 0.9.2: Histórico melhorado pra dividir os resultados por tempo de exercício e data.
 import 'package:flutter/material.dart'; // Importa a biblioteca principal do Flutter para interface gráfica
 import 'screens/menu_screen.dart'; // Importa a tela do menu principal
 

@@ -66,6 +66,13 @@ class _MenuScreenState extends State<MenuScreen> {
               },
               child: const Text("Ver Histórico", style: TextStyle(fontSize: 25)),
             ),
+            const SizedBox(height: 100),
+            ElevatedButton(
+              onPressed: () async {
+                await checkEsp32Connection();
+              },
+              child: const Text("🔄Atualizar", style: TextStyle(fontSize: 25)),
+            ),
           ],
         ),
       ),

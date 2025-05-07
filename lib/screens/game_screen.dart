@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart'; // Importa a biblioteca do Flutter
+import 'package:flutter_application_1/screens/menu_screen.dart';
 import 'dart:convert'; // Importa a biblioteca para manipulação de JSON
 import 'dart:math'; // Importa para gerar números aleatórios
 import 'dart:async'; // Importa para uso de temporizadores
@@ -6,9 +7,8 @@ import 'package:http/http.dart' as http; // Importa para fazer requisições HTT
 import 'package:flutter_application_1/services/storage_service.dart'; // Importa o serviço de armazenamento dos tempos
 
 class FingerGameScreen extends StatefulWidget {
-  final int gameTimer;
-
-  const FingerGameScreen({super.key, required this.gameTimer}); // Construtor da tela
+  final int? gameTimer;
+  const FingerGameScreen({super.key, this.gameTimer}); // Construtor da tela
 
   @override
   // ignore: library_private_types_in_public_api
@@ -25,7 +25,7 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
   bool success = false, wrong = false, gameOver = false; // Variáveis de controle
   Timer? gameTimer, checkTimer; // Timers do jogo
   DateTime? startTime; // Momento em que o dedo foi mostrado
-  List<int> reactionTimes = []; // Lista de tempos de reação em milissegundos
+  List<double> reactionTimes = []; // Lista de tempos de reação em milissegundos
 
   final Random _random = Random(); // Gerador de números aleatórios
 
@@ -46,7 +46,11 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
     gameOver = false;
     correctCount = 0; // Reinicia o contador de erros
     totaltries = 0;
-    timeLeft = widget.gameTimer; // Reinicia o tempo restante
+    if (widget.gameTimer != null) {
+    timeLeft = widget.gameTimer!;
+  } else {
+    timeLeft = -1; // Sem limite de tempo
+  }
     reactionTimes.clear();
     pickRandomFinger();
     startTimers();
@@ -63,7 +67,7 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
   void startTimers() {
     gameTimer?.cancel();
     checkTimer?.cancel();
-
+    if (widget.gameTimer != null){
     gameTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (timeLeft > 0) { // Verifica se ainda há tempo restante
         setState(() => timeLeft--); // Decrementa o tempo restante
@@ -71,7 +75,8 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
         endGame(); // Encerra o jogo se o tempo acabar
       }
     });
-    checkTimer = Timer.periodic(const Duration(milliseconds: 100), (_) => checkFingerPress());
+    }
+    checkTimer = Timer.periodic(const Duration(milliseconds: 50), (_) => checkFingerPress());
   }
 
   Future<void> checkFingerPress() async {
@@ -84,13 +89,13 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
         if (!success) {
           // Verifica se o dedo correto foi pressionado
           if (fingerStates[targetFinger] == 1) {
-            int reactionTime = DateTime.now().difference(startTime!).inMilliseconds; // Calcula o tempo de reação em milissegundos
+            double reactionTime = DateTime.now().difference(startTime!).inMilliseconds.toDouble(); // Calcula o tempo de reação em milissegundos
             reactionTimes.add(reactionTime); // Adiciona à lista de tempos
             setState(() => success = true);
             totaltries++;
             correctCount++;
             // Gera um delay aleatório entre 100 ms e 3000 ms (3s)
-            int randomDelay = 100 + _random.nextInt(2900);
+            int randomDelay = 200 + _random.nextInt(2300);
             Future.delayed(Duration(milliseconds: randomDelay), pickRandomFinger);
         } else{
           // Verifica se algum dedo errado foi pressionado
@@ -118,17 +123,33 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
     }
   }
 
+  
+
   Future<void> endGame() async {
     gameTimer?.cancel(); // Para os timers
     checkTimer?.cancel();
 
-    double avgReaction = reactionTimes.isNotEmpty
+    final double avgReaction = reactionTimes.isNotEmpty
         ? reactionTimes.reduce((a, b) => a + b) / reactionTimes.length
         : 0.0; // Calcula média
 
-    double accuracy = totaltries > 0 ? (correctCount / totaltries) * 100 : 0; // Calcula taxa de acerto
+    final double accuracy = totaltries > 0 ? (correctCount / totaltries) * 100 : 0; // Calcula taxa de acerto
+    final result = GameResult(
+      avgReaction: avgReaction,
+      accuracyRate: accuracy,
+      gameTime: widget.gameTimer,
+      dateTime: DateTime.now(),
+      reactionTimes: List.from(reactionTimes),
+    );
+    final all = await StorageService.loadData();
+    final key = widget.gameTimer?.toString() ?? 'ilimitado';
 
-    await StorageService.saveMatch(avgReaction, accuracy); // Salva os dados da partida
+    if (!all.containsKey(key)) {
+      all[key] = [];
+    }
+
+    all[key]!.add(result);
+    await StorageService.saveMatch(all);
 
     setState(() => gameOver = true); // Atualiza UI para mostrar o fim do jogo
   }
@@ -142,7 +163,7 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
             ? Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text("⏳ Tempo Esgotado!", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.red)),
+                  const Text("Exercício Encerrado!", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.red)),
                   const SizedBox(height: 20),
                   totaltries == 0
                       ?Text("Nenhum dedo foi pressionado corretamente.", style: const TextStyle(fontSize: 20), textAlign: TextAlign.center)
@@ -152,13 +173,18 @@ class _FingerGameScreenState extends State<FingerGameScreen> {
                   const SizedBox(height: 20),
                   ElevatedButton(onPressed: startGame, child: const Text("🔄 Reiniciar exercício", style: TextStyle(fontSize: 20))),
                   const SizedBox(height: 10),
-                  ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("Voltar ao Menu", style: TextStyle(fontSize: 20))),
+                  ElevatedButton(onPressed: () {Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const MenuScreen()),);
+                  }, 
+                  child: const Text("Voltar ao Menu", style: TextStyle(fontSize: 20))),
                 ],
               )
             : Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text("Tempo Restante: $timeLeft s", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  widget.gameTimer != null? Text('Tempo: $timeLeft s', style: const TextStyle(fontSize: 24))
+                                          : Text('Tempo: Ilimitado', style: const TextStyle(fontSize: 24)),
                   const SizedBox(height: 20),
                   Text("Pressione: $targetFinger", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                   if (wrong) const Text("❌ Errou!", style: TextStyle(fontSize: 28, color: Colors.red, fontWeight: FontWeight.bold))
